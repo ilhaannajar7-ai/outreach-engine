@@ -1,0 +1,61 @@
+{
+  "name": "outreach-engine",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI-powered outreach engine for outsourcing solutions",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "worker": "tsx src/worker/index.ts",
+    "worker:dev": "tsx watch src/worker/index.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:studio": "drizzle-kit studio",
+    "db:seed": "tsx src/db/seed.ts",
+    "local:db": "node scripts/local-db.mjs",
+    "local:demo": "node scripts/demo-data.mjs",
+    "check:enums": "node scripts/check-enums.mjs",
+    "check:hooks": "tsx scripts/test-hooks.ts",
+    "check:assistant": "tsx scripts/test-assistant-tools.ts",
+    "check:stats": "tsx scripts/test-stats.ts",
+    "check:experiments": "tsx scripts/test-experiments.ts",
+    "check:targeting": "tsx scripts/test-targeting.ts",
+    "sync-prompts": "node scripts/sync-prompts.mjs",
+    "verify": "tsc --noEmit && node scripts/check-enums.mjs && tsx scripts/test-hooks.ts && tsx scripts/test-stats.ts && tsx scripts/test-targeting.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.0",
+    "@auth/drizzle-adapter": "^1.10.0",
+    "bcryptjs": "^2.4.3",
+    "date-fns": "^4.1.0",
+    "dotenv": "^16.4.7",
+    "drizzle-orm": "^0.44.0",
+    "next": "^15.5.0",
+    "next-auth": "^4.24.11",
+    "papaparse": "^5.5.2",
+    "postgres": "^3.4.5",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "recharts": "^2.15.0",
+    "resend": "^4.1.2",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.5",
+    "@electric-sql/pglite-socket": "^0.2.8",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^22.10.0",
+    "@types/papaparse": "^5.3.15",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "drizzle-kit": "^0.31.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,1 @@
+ALTER TYPE "public"."job_type" ADD VALUE 'find_contacts' BEFORE 'verify_contact_email';

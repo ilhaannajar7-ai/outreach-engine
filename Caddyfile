@@ -1,0 +1,43 @@
+# =============================================================================
+# Caddy reverse proxy
+#
+# TLS certificates are obtained and renewed automatically from Let's Encrypt —
+# nothing to configure, nothing to remember to renew.
+#
+# Set APP_DOMAIN in .env to your real domain before deploying. Left as
+# "localhost", Caddy serves a self-signed certificate, which is right for local
+# testing and wrong for production.
+# =============================================================================
+
+{$APP_DOMAIN} {
+	encode gzip zstd
+
+	# The webhook endpoint verifies its own signature and must stay reachable.
+	handle /api/webhooks/* {
+		reverse_proxy web:3000
+	}
+
+	handle {
+		reverse_proxy web:3000 {
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		# Caddy already advertises itself; no need to name the app server too.
+		-Server
+	}
+
+	log {
+		output file /data/access.log {
+			roll_size 10MB
+			roll_keep 5
+		}
+	}
+}

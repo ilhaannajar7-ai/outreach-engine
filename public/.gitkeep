@@ -1,0 +1,2 @@
+# Keeps the public/ directory in git so the Docker build (which COPYs it) succeeds.
+# Next.js serves static assets placed here at the site root.
