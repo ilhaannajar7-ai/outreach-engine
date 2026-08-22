@@ -132,6 +132,7 @@ export const jobTypeEnum = pgEnum('job_type', [
   'check_follow_ups_due',
   'find_contacts',
   'verify_contact_email',
+  'source_leads',
   'health_check',
   'daily_digest',
   'backup_database',

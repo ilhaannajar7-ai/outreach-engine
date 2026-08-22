@@ -6,11 +6,12 @@
  */
 
 import { db } from '@/db';
-import { companies, organizations, aiResearch, leads, type ScoredHook } from '@/db/schema';
+import { companies, organizations, aiResearch, leads, settings, type ScoredHook } from '@/db/schema';
 import { and, eq, desc } from 'drizzle-orm';
 import { researchCompany } from '@/lib/ai/operations';
 import { assessHook, assessResearch } from '@/lib/ai/hook-quality';
 import { notify, notifyStopped } from '@/lib/notifications';
+import { getJobQueue } from '@/lib/providers/queue';
 import type { JobHandler } from '../types';
 
 /** Research older than this is refreshed on next use. */
@@ -162,6 +163,31 @@ export const researchHandler: JobHandler<{
 
     if (leadId) {
       await db.update(leads).set(leadUpdate).where(eq(leads.id, leadId));
+    }
+
+    // Hands-free path: strong research walks itself to a draft in the approval
+    // queue. Weak research deliberately does not — it is flagged below instead,
+    // because auto-generating from a generic brief is exactly how a domain ends
+    // up sending automated-sounding mail. Sending still requires approval.
+    if (leadId && !needsAttention) {
+      const [autoGenerate] = await db
+        .select({ value: settings.value })
+        .from(settings)
+        .where(
+          and(
+            eq(settings.organizationId, organizationId),
+            eq(settings.key, 'auto_generate_after_research'),
+          ),
+        )
+        .limit(1);
+
+      if (autoGenerate?.value === true) {
+        await getJobQueue().enqueue(
+          'generate_email',
+          { leadId },
+          { organizationId, idempotencyKey: `generate:${leadId}` },
+        );
+      }
     }
 
     if (needsAttention) {

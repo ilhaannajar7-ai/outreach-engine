@@ -1,0 +1,1 @@
+ALTER TYPE "public"."job_type" ADD VALUE 'source_leads' BEFORE 'health_check';

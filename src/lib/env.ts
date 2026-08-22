@@ -52,6 +52,10 @@ const envSchema = z.object({
   SMTP_PASSWORD: blankAsUndefined(z.string().optional()),
 
   ENRICHMENT_PROVIDER: blankAsUndefined(z.enum(['hunter', 'apollo', 'none']).default('none')),
+
+  // Which provider finds companies worth contacting. Defaults to 'none' so
+  // scheduled sourcing never spends credits until it is deliberately enabled.
+  SOURCING_PROVIDER: blankAsUndefined(z.enum(['apollo', 'none']).default('none')),
   HUNTER_API_KEY: blankAsUndefined(z.string().optional()),
   APOLLO_API_KEY: blankAsUndefined(z.string().optional()),
 
@@ -120,6 +124,9 @@ function loadEnv(): Env {
   }
   if (env.ENRICHMENT_PROVIDER === 'hunter' && !env.HUNTER_API_KEY) {
     throw new Error('ENRICHMENT_PROVIDER is "hunter" but HUNTER_API_KEY is not set.');
+  }
+  if (env.SOURCING_PROVIDER === 'apollo' && !env.APOLLO_API_KEY) {
+    throw new Error('SOURCING_PROVIDER is "apollo" but APOLLO_API_KEY is not set.');
   }
   if (env.ENRICHMENT_PROVIDER === 'apollo' && !env.APOLLO_API_KEY) {
     throw new Error('ENRICHMENT_PROVIDER is "apollo" but APOLLO_API_KEY is not set.');

@@ -22,6 +22,7 @@ import { generateEmailHandler, generateFollowUpHandler } from './handlers/genera
 import { sendEmailHandler } from './handlers/send-email';
 import { classifyReplyHandler } from './handlers/classify-reply';
 import { findContactsHandler, verifyContactEmailHandler } from './handlers/enrich';
+import { sourceLeadsHandler } from './handlers/source-leads';
 import {
   checkFollowUpsDueHandler,
   healthCheckHandler,
@@ -39,6 +40,7 @@ const handlers: Partial<Record<string, JobHandler<never>>> = {
   classify_reply: classifyReplyHandler as JobHandler<never>,
   find_contacts: findContactsHandler as JobHandler<never>,
   verify_contact_email: verifyContactEmailHandler as JobHandler<never>,
+  source_leads: sourceLeadsHandler as JobHandler<never>,
   check_follow_ups_due: checkFollowUpsDueHandler as JobHandler<never>,
   health_check: healthCheckHandler as JobHandler<never>,
   daily_digest: dailyDigestHandler as JobHandler<never>,
@@ -143,6 +145,17 @@ async function scheduleRecurringJobs(): Promise<void> {
       {},
       { organizationId: org.id, idempotencyKey: `sync:${org.id}:${hourBucket}` },
     );
+
+    // Source new leads once a day at 07:00, ahead of the send window, so
+    // discovery/research/drafting has finished before anyone opens the queue.
+    // The handler is a no-op unless the org has enabled auto-sourcing.
+    if (now.getHours() === 7) {
+      await queue.enqueue(
+        'source_leads',
+        {},
+        { organizationId: org.id, idempotencyKey: `source:${org.id}:${dayBucket}` },
+      );
+    }
 
     // Daily digest at 08:00 local.
     if (now.getHours() === 8) {
