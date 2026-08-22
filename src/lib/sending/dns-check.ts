@@ -59,7 +59,7 @@ export async function checkSpf(domain: string): Promise<DnsCheckResult> {
  * whoever sends your mail — so we try the common ones.
  */
 export async function checkDkim(domain: string, selectors?: string[]): Promise<DnsCheckResult> {
-  const candidates = selectors ?? ['google', 'default', 'resend', 'smartlead', 'k1', 's1', 'mail'];
+  const candidates = selectors ?? ['google', 'default', 'resend', 'smartlead', 'zmail', 'zoho', 'k1', 's1', 'mail'];
 
   for (const selector of candidates) {
     const records = await txtRecords(`${selector}._domainkey.${domain}`);
