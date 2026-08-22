@@ -2,10 +2,11 @@ import { env } from '@/lib/env';
 import type { EmailService } from './types';
 import { ResendEmailService } from './resend';
 import { SmartleadEmailService } from './smartlead';
+import { SmtpEmailService } from './smtp';
 import { ConsoleEmailService } from './console';
 
 export * from './types';
-export { ResendEmailService, SmartleadEmailService, ConsoleEmailService };
+export { ResendEmailService, SmartleadEmailService, SmtpEmailService, ConsoleEmailService };
 
 const instances = new Map<string, EmailService>();
 
@@ -30,12 +31,15 @@ export function getEmailService(providerName?: string): EmailService {
     case 'smartlead':
       service = new SmartleadEmailService();
       break;
+    case 'smtp':
+      service = new SmtpEmailService();
+      break;
     case 'console':
       service = new ConsoleEmailService();
       break;
     default:
       throw new Error(
-        `Unknown email provider "${name}". Valid values: resend, smartlead, console.`,
+        `Unknown email provider "${name}". Valid values: resend, smartlead, smtp, console.`,
       );
   }
 

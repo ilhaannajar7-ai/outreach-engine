@@ -110,6 +110,14 @@ function loadEnv(): Env {
   if (env.EMAIL_PROVIDER === 'smartlead' && !env.SMARTLEAD_API_KEY) {
     throw new Error('EMAIL_PROVIDER is "smartlead" but SMARTLEAD_API_KEY is not set.');
   }
+  if (
+    env.EMAIL_PROVIDER === 'smtp' &&
+    (!env.SMTP_HOST || !env.SMTP_USER || !env.SMTP_PASSWORD)
+  ) {
+    throw new Error(
+      'EMAIL_PROVIDER is "smtp" but SMTP_HOST, SMTP_USER, and SMTP_PASSWORD are not all set.',
+    );
+  }
   if (env.ENRICHMENT_PROVIDER === 'hunter' && !env.HUNTER_API_KEY) {
     throw new Error('ENRICHMENT_PROVIDER is "hunter" but HUNTER_API_KEY is not set.');
   }
