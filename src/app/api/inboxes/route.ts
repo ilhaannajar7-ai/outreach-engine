@@ -10,6 +10,7 @@ import {
   audit,
   ApiError,
 } from '@/lib/api-helpers';
+import { env } from '@/lib/env';
 
 export async function GET() {
   return handleRoute(async () => {
@@ -39,7 +40,9 @@ const createSchema = z.object({
     .regex(/^[a-z0-9._-]+$/i, 'Use only letters, numbers, dots, dashes, and underscores'),
   displayName: z.string().min(1).max(255),
   replyToAddress: z.string().email().max(320).optional(),
-  provider: z.enum(['resend', 'smartlead', 'smtp', 'console']).default('resend'),
+  // Defaults to the app's configured EMAIL_PROVIDER when the caller omits it,
+  // so a new inbox uses whatever the deployment actually sends through.
+  provider: z.enum(['resend', 'smartlead', 'smtp', 'console']).optional(),
   providerInboxId: z.string().max(255).optional(),
   maxDailySendLimit: z.number().int().min(1).max(500).default(100),
   startWarmup: z.boolean().default(true),
@@ -88,7 +91,7 @@ export async function POST(request: Request) {
         emailAddress,
         displayName: body.displayName,
         replyToAddress: body.replyToAddress ?? null,
-        provider: body.provider,
+        provider: body.provider ?? env.EMAIL_PROVIDER,
         providerInboxId: body.providerInboxId ?? null,
         status: startsWarming ? 'warming' : 'pending_setup',
         dailySendLimit: 10,
