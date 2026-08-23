@@ -44,7 +44,7 @@ const createSchema = z.object({
   // so a new inbox uses whatever the deployment actually sends through.
   provider: z.enum(['resend', 'smartlead', 'smtp', 'console']).optional(),
   providerInboxId: z.string().max(255).optional(),
-  maxDailySendLimit: z.number().int().min(1).max(500).default(100),
+  maxDailySendLimit: z.number().int().min(1).max(500).default(50),
   startWarmup: z.boolean().default(true),
 });
 

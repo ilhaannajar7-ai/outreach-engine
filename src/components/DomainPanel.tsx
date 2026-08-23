@@ -335,7 +335,7 @@ function AddInboxModal({
 }) {
   const [localPart, setLocalPart] = useState('outreach');
   const [displayName, setDisplayName] = useState('');
-  const [maxDaily, setMaxDaily] = useState(100);
+  const [maxDaily, setMaxDaily] = useState(50);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
