@@ -8,6 +8,7 @@ import { getUnreadCount } from '@/lib/notifications';
 import { Sidebar } from '@/components/Sidebar';
 import { TopBar } from '@/components/TopBar';
 import { OrganizationForm } from '@/components/OrganizationForm';
+import { TeamManager, type TeamMember } from '@/components/TeamManager';
 import { formatRelativeTime } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
@@ -38,6 +39,15 @@ export default async function OrganizationPage() {
   const organization = orgRows[0];
   if (!organization) redirect('/login');
 
+  const teamMembers: TeamMember[] = members.map((m) => ({
+    userId: m.userId,
+    name: m.name,
+    email: m.email,
+    role: m.role as TeamMember['role'],
+    lastLogin: m.lastLoginAt ? formatRelativeTime(m.lastLoginAt) : 'never',
+    isActive: m.isActive,
+  }));
+
   return (
     <div className="shell">
       <Sidebar />
@@ -63,70 +73,11 @@ export default async function OrganizationPage() {
             canEdit={session.user.role === 'owner' || session.user.role === 'admin'}
           />
 
-          <div className="card">
-            <div className="ch">
-              <h3>Team</h3>
-              <span className="hint">
-                {members.length} member{members.length === 1 ? '' : 's'}
-              </span>
-            </div>
-
-            <div className="tablewrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Email</th>
-                    <th>Role</th>
-                    <th>Last sign-in</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {members.map((member) => (
-                    <tr key={member.userId}>
-                      <td style={{ fontWeight: 600 }}>{member.name ?? '—'}</td>
-                      <td className="mono" style={{ fontSize: 11.5 }}>
-                        {member.email}
-                      </td>
-                      <td>
-                        <span className={`pill ${member.role === 'owner' ? 'int' : 'neutral'}`}>
-                          {member.role}
-                        </span>
-                      </td>
-                      <td className="muted">
-                        {member.lastLoginAt ? formatRelativeTime(member.lastLoginAt) : 'never'}
-                      </td>
-                      <td>
-                        <span className={`pill ${member.isActive ? 'good' : 'crit'}`}>
-                          {member.isActive ? 'Active' : 'Disabled'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="muted" style={{ fontSize: 11.5, marginTop: 12, lineHeight: 1.7 }}>
-              Adding a teammate is a server-side action, deliberately — it creates a password. Run:
-              <div
-                className="mono"
-                style={{
-                  marginTop: 6,
-                  padding: '8px 11px',
-                  background: 'var(--panel-2)',
-                  border: '1px solid var(--line)',
-                  borderRadius: 6,
-                  fontSize: 11,
-                  wordBreak: 'break-all',
-                }}
-              >
-                docker compose exec web sh -c &apos;SEED_ADMIN_EMAIL=them@company.com
-                SEED_ADMIN_PASSWORD=&quot;their-password&quot; npx tsx src/db/seed.ts&apos;
-              </div>
-            </div>
-          </div>
+          <TeamManager
+            members={teamMembers}
+            currentUserId={session.user.id}
+            currentRole={session.user.role as TeamMember['role']}
+          />
         </div>
       </div>
     </div>
