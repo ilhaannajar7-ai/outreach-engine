@@ -34,7 +34,10 @@ export function Sidebar({
   const groups: NavGroup[] = [
     {
       label: 'Overview',
-      items: [{ href: '/', label: 'Dashboard', icon: '▚' }],
+      items: [
+        { href: '/', label: 'Dashboard', icon: '▚' },
+        { href: '/reports', label: 'Reports', icon: '▦' },
+      ],
     },
     {
       label: 'Outreach',
