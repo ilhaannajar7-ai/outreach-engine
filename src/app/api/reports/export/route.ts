@@ -19,7 +19,19 @@ export const dynamic = 'force-dynamic';
 const PERIODS: Record<string, number> = { weekly: 7, monthly: 30, quarterly: 90 };
 
 export async function GET(request: Request) {
-  const ctx = await requireAuth();
+  // This route returns a file rather than JSON, so it cannot use handleRoute.
+  // Auth failures are translated here instead — without this an unauthenticated
+  // request surfaces as a 500 and hides the real reason.
+  let ctx;
+  try {
+    ctx = await requireAuth();
+  } catch {
+    return new Response(JSON.stringify({ ok: false, error: 'Authentication required' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   const url = new URL(request.url);
   const periodKey = url.searchParams.get('period') ?? 'monthly';
   const days = PERIODS[periodKey] ?? 30;
