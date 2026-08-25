@@ -51,6 +51,21 @@ const envSchema = z.object({
   SMTP_USER: blankAsUndefined(z.string().optional()),
   SMTP_PASSWORD: blankAsUndefined(z.string().optional()),
 
+  // Inbound reply polling reads the mailbox over IMAP — the reliable way to
+  // catch replies when the sending provider does not deliver reply webhooks
+  // for direct-API sends. Auth reuses SMTP_USER/SMTP_PASSWORD unless overridden.
+  // Off unless IMAP_ENABLED is true, so nothing connects by accident.
+  IMAP_ENABLED: blankAsUndefined(
+    z
+      .enum(['true', 'false'])
+      .transform((v) => v === 'true')
+      .default('false'),
+  ),
+  IMAP_HOST: blankAsUndefined(z.string().default('imappro.zoho.in')),
+  IMAP_PORT: blankAsUndefined(z.coerce.number().default(993)),
+  IMAP_USER: blankAsUndefined(z.string().optional()),
+  IMAP_PASSWORD: blankAsUndefined(z.string().optional()),
+
   ENRICHMENT_PROVIDER: blankAsUndefined(z.enum(['hunter', 'apollo', 'none']).default('none')),
 
   // Which provider finds companies worth contacting. Defaults to 'none' so

@@ -1,0 +1,1 @@
+ALTER TYPE "public"."job_type" ADD VALUE 'poll_replies' BEFORE 'find_contacts';

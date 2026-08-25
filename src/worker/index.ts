@@ -23,6 +23,7 @@ import { sendEmailHandler } from './handlers/send-email';
 import { classifyReplyHandler } from './handlers/classify-reply';
 import { findContactsHandler, verifyContactEmailHandler } from './handlers/enrich';
 import { sourceLeadsHandler } from './handlers/source-leads';
+import { pollRepliesHandler } from './handlers/poll-replies';
 import {
   checkFollowUpsDueHandler,
   healthCheckHandler,
@@ -41,6 +42,7 @@ const handlers: Partial<Record<string, JobHandler<never>>> = {
   find_contacts: findContactsHandler as JobHandler<never>,
   verify_contact_email: verifyContactEmailHandler as JobHandler<never>,
   source_leads: sourceLeadsHandler as JobHandler<never>,
+  poll_replies: pollRepliesHandler as JobHandler<never>,
   check_follow_ups_due: checkFollowUpsDueHandler as JobHandler<never>,
   health_check: healthCheckHandler as JobHandler<never>,
   daily_digest: dailyDigestHandler as JobHandler<never>,
@@ -144,6 +146,15 @@ async function scheduleRecurringJobs(): Promise<void> {
       'sync_email_events',
       {},
       { organizationId: org.id, idempotencyKey: `sync:${org.id}:${hourBucket}` },
+    );
+
+    // Poll the mailbox for replies every 10 minutes — the reliable path when
+    // the sending provider does not deliver reply webhooks. No-op if IMAP is
+    // off, so scheduling it always is harmless.
+    await queue.enqueue(
+      'poll_replies',
+      {},
+      { organizationId: org.id, idempotencyKey: `pollreplies:${org.id}:${tenMinBucket}` },
     );
 
     // Source new leads once a day at 07:00, ahead of the send window, so

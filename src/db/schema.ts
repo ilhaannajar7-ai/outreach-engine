@@ -130,6 +130,7 @@ export const jobTypeEnum = pgEnum('job_type', [
   'classify_reply',
   'sync_email_events',
   'check_follow_ups_due',
+  'poll_replies',
   'find_contacts',
   'verify_contact_email',
   'source_leads',
