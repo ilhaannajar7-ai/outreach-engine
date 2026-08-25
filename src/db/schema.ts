@@ -219,6 +219,15 @@ export const users = pgTable(
     image: text('image'),
     lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
     isActive: boolean('is_active').notNull().default(true),
+
+    // Two-factor auth (TOTP — authenticator app). The secret is only trusted
+    // once twoFactorEnabledAt is set, so an abandoned half-finished setup can
+    // never lock anyone out — enrolment requires verifying a live code first.
+    twoFactorSecret: text('two_factor_secret'),
+    twoFactorEnabledAt: timestamp('two_factor_enabled_at', { withTimezone: true }),
+    /** Single-use recovery codes, stored hashed, for a lost device. */
+    twoFactorRecoveryCodes: jsonb('two_factor_recovery_codes').$type<string[]>(),
+
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

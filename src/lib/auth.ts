@@ -15,6 +15,7 @@ import { db } from '@/db';
 import { users, organizationMembers, organizations } from '@/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { env } from '@/lib/env';
+import { verifyTotp, consumeRecoveryCode } from '@/lib/two-factor';
 
 declare module 'next-auth' {
   interface Session {
@@ -68,6 +69,7 @@ export const authOptions: NextAuthOptions = {
       credentials: {
         email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' },
+        totp: { label: 'Authentication code', type: 'text' },
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials.password) return null;
@@ -82,6 +84,25 @@ export const authOptions: NextAuthOptions = {
 
         const valid = await verifyPassword(credentials.password, user.passwordHash);
         if (!valid) return null;
+
+        // Second factor, when the account has completed enrolment. A distinct
+        // error code lets the login screen ask for the code instead of showing
+        // "wrong password" — the password was right, it is just not enough.
+        if (user.twoFactorEnabledAt && user.twoFactorSecret) {
+          const submitted = credentials.totp?.trim();
+          if (!submitted) throw new Error('2FA_REQUIRED');
+
+          const codeOk = verifyTotp(submitted, user.twoFactorSecret);
+          if (!codeOk) {
+            // Fall back to a single-use recovery code for a lost device.
+            const remaining = await consumeRecoveryCode(submitted, user.twoFactorRecoveryCodes);
+            if (!remaining) throw new Error('2FA_INVALID');
+            await db
+              .update(users)
+              .set({ twoFactorRecoveryCodes: remaining, updatedAt: new Date() })
+              .where(eq(users.id, user.id));
+          }
+        }
 
         const [membership] = await db
           .select({

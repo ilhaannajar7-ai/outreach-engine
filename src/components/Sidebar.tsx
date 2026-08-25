@@ -76,6 +76,7 @@ export function Sidebar({
       label: 'Settings',
       items: [
         { href: '/settings/organization', label: 'Organization', icon: '▤' },
+        { href: '/settings/security', label: 'Security', icon: '🔒' },
         { href: '/settings/notifications', label: 'Notifications', icon: '🔔' },
       ],
     },
