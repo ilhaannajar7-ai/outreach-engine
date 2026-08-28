@@ -63,15 +63,13 @@ export class SmartleadEmailService implements EmailService {
       );
     }
 
-    // Follow-ups must thread within Smartlead (its reply endpoint); that path is
-    // not wired yet, so fail loudly rather than send a broken thread.
-    if (request.inReplyTo) {
-      throw new EmailFatalError(
-        'Follow-up sending through the Smartlead relay is not configured yet.',
-      );
-    }
-
     const bodyHtml = request.html ?? textToHtml(request.text);
+
+    // Follow-ups thread onto the existing conversation via Smartlead's reply
+    // endpoint rather than being added as a fresh lead.
+    if (request.inReplyTo) {
+      return this.sendFollowUp(campaignId, request, bodyHtml);
+    }
 
     const response = (await this.request('POST', `/campaigns/${campaignId}/leads`, {
       lead_list: [
@@ -106,6 +104,58 @@ export class SmartleadEmailService implements EmailService {
     const providerMessageId = `sl-relay:${campaignId}:${request.to}:${Date.now()}`;
 
     return { providerMessageId, acceptedAt: new Date() };
+  }
+
+  /**
+   * Send a follow-up as a reply on the lead's existing Smartlead thread.
+   *
+   * We don't store Smartlead's own ids (they're assigned after the initial send),
+   * so resolve them at send time: look the lead up by email, read its message
+   * history, and reply on the most recent SENT message's thread. If the initial
+   * has not been recorded yet, the send is retried rather than failed.
+   */
+  private async sendFollowUp(
+    campaignId: string,
+    request: SendEmailRequest,
+    bodyHtml: string,
+  ): Promise<SendEmailResult> {
+    const lead = (await this.request(
+      'GET',
+      `/leads/?email=${encodeURIComponent(request.to)}`,
+    )) as { id?: string | number } | null;
+
+    const leadId = lead?.id;
+    if (!leadId) {
+      throw new EmailRetryableError(
+        `Smartlead has no lead for ${request.to} yet — the initial send may not be recorded.`,
+      );
+    }
+
+    const history = (await this.request(
+      'GET',
+      `/campaigns/${campaignId}/leads/${leadId}/message-history`,
+    )) as { history?: { stats_id?: string; message_id?: string; type?: string; time?: string }[] };
+
+    const lastSent = (history.history ?? [])
+      .filter((m) => m.type === 'SENT' && m.stats_id)
+      .sort((a, b) => new Date(b.time ?? 0).getTime() - new Date(a.time ?? 0).getTime())[0];
+
+    if (!lastSent?.stats_id) {
+      throw new EmailRetryableError(
+        `No sent message found in Smartlead for ${request.to} yet — retrying the follow-up shortly.`,
+      );
+    }
+
+    await this.request('POST', `/campaigns/${campaignId}/reply-email-thread`, {
+      email_stats_id: lastSent.stats_id,
+      email_body: bodyHtml,
+      ...(lastSent.message_id ? { reply_message_id: lastSent.message_id } : {}),
+    });
+
+    return {
+      providerMessageId: `sl-reply:${campaignId}:${request.to}:${Date.now()}`,
+      acceptedAt: new Date(),
+    };
   }
 
   /**
