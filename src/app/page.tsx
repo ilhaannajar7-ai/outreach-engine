@@ -9,6 +9,8 @@ import { TopBar } from '@/components/TopBar';
 import { ActivityChart, FunnelChart, DonutChart, Sparkline } from '@/components/charts';
 import { DomainPanel } from '@/components/DomainPanel';
 import { SmartleadPanel } from '@/components/SmartleadPanel';
+import { SendingActivityPanel } from '@/components/SendingActivityPanel';
+import { FollowUpPanel } from '@/components/FollowUpPanel';
 import { formatStatus, statusPill, formatOperation, formatComponent } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
@@ -230,6 +232,11 @@ export default async function DashboardPage() {
               </div>
             </div>
           </div>
+
+          {/* --- Live sending, engagement, and the follow-up pipeline ------ */}
+          <SendingActivityPanel />
+
+          <FollowUpPanel canEdit={session.user.role !== 'viewer'} />
 
           {/* --- Smartlead live warm-up / deliverability ------------------- */}
           <SmartleadPanel />

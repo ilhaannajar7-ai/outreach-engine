@@ -18,11 +18,46 @@
 
 import { and, eq, isNotNull } from 'drizzle-orm';
 import { db } from '@/db';
-import { sendingInboxes } from '@/db/schema';
+import { sendingInboxes, settings } from '@/db/schema';
 import { env } from '@/lib/env';
 
 const API_BASE = 'https://server.smartlead.ai/api/v1';
 const CACHE_TTL_MS = 30_000;
+
+/** One real outreach send, as Smartlead recorded it. */
+export interface SmartleadSend {
+  toEmail: string;
+  subject: string;
+  sentAt: string | null;
+  openedAt: string | null;
+  clickedAt: string | null;
+  repliedAt: string | null;
+  openCount: number;
+  clickCount: number;
+  bounced: boolean;
+  unsubscribed: boolean;
+  sequenceNumber: number;
+}
+
+export interface SmartleadActivity {
+  configured: boolean;
+  reason?: string;
+  campaignId: string | null;
+  campaignStatus: string | null;
+  fetchedAt: string;
+  totals: {
+    sent: number;
+    opened: number;
+    clicked: number;
+    replied: number;
+    bounced: number;
+    unsubscribed: number;
+    openRate: number;
+    replyRate: number;
+    bounceRate: number;
+  };
+  recent: SmartleadSend[];
+}
 
 export interface WarmupDayStat {
   date: string;
@@ -93,6 +128,151 @@ interface RawWarmupStats {
 }
 
 const cache = new Map<string, { at: number; data: SmartleadWarmup }>();
+const activityCache = new Map<string, { at: number; data: SmartleadActivity }>();
+
+/**
+ * Live sending + engagement for the relay campaign — what actually went out and
+ * what recipients did with it, straight from Smartlead rather than our mirror.
+ *
+ * The 10-minute sync writes this into our tables for the funnel and reports;
+ * this reader is what makes the dashboard show it *now*, and is also how you can
+ * tell our mirror apart from the provider's own truth if they ever disagree.
+ */
+export async function getSmartleadActivity(
+  organizationId: string,
+  forceRefresh = false,
+): Promise<SmartleadActivity> {
+  const now = Date.now();
+  if (!forceRefresh) {
+    const hit = activityCache.get(organizationId);
+    if (hit && now - hit.at < CACHE_TTL_MS) return hit.data;
+  }
+
+  const base: SmartleadActivity = {
+    configured: false,
+    campaignId: null,
+    campaignStatus: null,
+    fetchedAt: new Date().toISOString(),
+    totals: {
+      sent: 0,
+      opened: 0,
+      clicked: 0,
+      replied: 0,
+      bounced: 0,
+      unsubscribed: 0,
+      openRate: 0,
+      replyRate: 0,
+      bounceRate: 0,
+    },
+    recent: [],
+  };
+
+  const apiKey = env.SMARTLEAD_API_KEY;
+  if (!apiKey) return { ...base, reason: 'SMARTLEAD_API_KEY is not set.' };
+
+  const [row] = await db
+    .select({ value: settings.value })
+    .from(settings)
+    .where(
+      and(
+        eq(settings.organizationId, organizationId),
+        eq(settings.key, 'smartlead_relay_campaign_id'),
+      ),
+    )
+    .limit(1);
+
+  const campaignId = row?.value != null ? String(row.value) : null;
+  if (!campaignId) {
+    return { ...base, reason: 'No Smartlead relay campaign is configured yet.' };
+  }
+
+  let campaignStatus: string | null = null;
+  try {
+    const campaign = await slFetch<{ status?: string }>(`/campaigns/${campaignId}`, apiKey);
+    campaignStatus = campaign.status ?? null;
+  } catch {
+    // Status is a nicety; the statistics below are the substance.
+  }
+
+  interface StatRow {
+    lead_email?: string;
+    email_subject?: string;
+    sent_time?: string;
+    open_time?: string | null;
+    click_time?: string | null;
+    reply_time?: string | null;
+    open_count?: number;
+    click_count?: number;
+    is_bounced?: boolean;
+    is_unsubscribed?: boolean;
+    sequence_number?: number;
+  }
+
+  let rows: StatRow[] = [];
+  try {
+    const payload = await slFetch<{ data?: StatRow[] }>(
+      `/campaigns/${campaignId}/statistics?limit=500`,
+      apiKey,
+    );
+    rows = payload.data ?? [];
+  } catch (error) {
+    return {
+      ...base,
+      configured: true,
+      campaignId,
+      campaignStatus,
+      reason: error instanceof Error ? error.message : 'Could not read campaign statistics.',
+    };
+  }
+
+  const sent = rows.length;
+  const opened = rows.filter((r) => r.open_time).length;
+  const clicked = rows.filter((r) => r.click_time).length;
+  const replied = rows.filter((r) => r.reply_time).length;
+  const bounced = rows.filter((r) => r.is_bounced).length;
+  const unsubscribed = rows.filter((r) => r.is_unsubscribed).length;
+  const pct = (n: number) => (sent > 0 ? (n / sent) * 100 : 0);
+
+  const recent = rows
+    .slice()
+    .sort((a, b) => new Date(b.sent_time ?? 0).getTime() - new Date(a.sent_time ?? 0).getTime())
+    .slice(0, 25)
+    .map((r) => ({
+      toEmail: r.lead_email ?? '(unknown)',
+      subject: r.email_subject ?? '(no subject)',
+      sentAt: r.sent_time ?? null,
+      openedAt: r.open_time ?? null,
+      clickedAt: r.click_time ?? null,
+      repliedAt: r.reply_time ?? null,
+      openCount: Number(r.open_count ?? 0),
+      clickCount: Number(r.click_count ?? 0),
+      bounced: Boolean(r.is_bounced),
+      unsubscribed: Boolean(r.is_unsubscribed),
+      sequenceNumber: Number(r.sequence_number ?? 1),
+    }));
+
+  const data: SmartleadActivity = {
+    configured: true,
+    campaignId,
+    campaignStatus,
+    fetchedAt: new Date().toISOString(),
+    totals: {
+      sent,
+      opened,
+      clicked,
+      replied,
+      bounced,
+      unsubscribed,
+      openRate: pct(opened),
+      replyRate: pct(replied),
+      bounceRate: pct(bounced),
+    },
+    recent,
+  };
+
+  activityCache.set(organizationId, { at: now, data });
+  return data;
+}
 
 /** Parse Smartlead's reputation, which arrives as "97%" or a bare number. */
 function parseReputation(value: string | number | undefined): number | null {
