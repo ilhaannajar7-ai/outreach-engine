@@ -49,11 +49,17 @@ export async function POST(request: Request, { params }: Params) {
 
     const jobId = await getJobQueue().enqueue(
       'generate_email',
-      { leadId: id },
+      // A manual click is an explicit request for a draft to review, so it is
+      // allowed to produce one even when the research hook is weak — the human
+      // still approves (and can edit) every email before it can send. The
+      // automatic pipeline stays strict; only this user-initiated path relaxes.
+      { leadId: id, allowWeakHook: true },
       {
         organizationId: ctx.organizationId,
         priority: 10,
-        idempotencyKey: `generate:${id}:${new Date().toISOString().slice(0, 10)}`,
+        // Per-minute key: dedupes an accidental double-click, but still lets the
+        // user regenerate later (e.g. after improving the research).
+        idempotencyKey: `generate:${id}:${new Date().toISOString().slice(0, 16)}`,
       },
     );
 
@@ -70,8 +76,8 @@ export async function POST(request: Request, { params }: Params) {
       queued: jobId !== null,
       jobId,
       message: jobId
-        ? 'Email generation queued. The draft appears in the approval queue shortly.'
-        : 'An email has already been generated for this lead today.',
+        ? 'Email generation queued. The draft appears in the approval queue in a few seconds.'
+        : 'Generation is already running for this lead — check the approval queue in a moment.',
     };
   });
 }

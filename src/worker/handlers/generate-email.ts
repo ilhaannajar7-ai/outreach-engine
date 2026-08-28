@@ -21,7 +21,7 @@ import { and, eq, desc, inArray } from 'drizzle-orm';
 import { generateEmail, generateFollowUp } from '@/lib/ai/operations';
 import { normalizeHooks, HOOK_QUALITY_THRESHOLD } from '@/lib/ai/hook-quality';
 import { variantPromptAdditions } from '@/lib/experiments';
-import { notifyStopped } from '@/lib/notifications';
+import { notify, notifyStopped } from '@/lib/notifications';
 import type { JobHandler } from '../types';
 
 /** Load every row the generators need, scoped to the org. */
@@ -55,8 +55,10 @@ async function loadLeadContext(organizationId: string, leadId: string) {
   return { ...row, organization };
 }
 
-export const generateEmailHandler: JobHandler<{ leadId: string }> = async (job) => {
-  const { leadId } = job.payload;
+export const generateEmailHandler: JobHandler<{ leadId: string; allowWeakHook?: boolean }> = async (
+  job,
+) => {
+  const { leadId, allowWeakHook } = job.payload;
   const organizationId = job.organizationId;
   if (!organizationId) throw new Error('generate_email requires an organizationId');
 
@@ -94,7 +96,11 @@ export const generateEmailHandler: JobHandler<{ leadId: string }> = async (job) 
   const hooks = normalizeHooks(ctx.research.personalizationHooks);
   const bestScore = hooks[0]?.score ?? 0;
 
-  if (bestScore < HOOK_QUALITY_THRESHOLD) {
+  // Weak hook handling. The automatic pipeline stops here — sending generic mail
+  // at scale is what burns a domain. But a manual "Generate email" click sets
+  // allowWeakHook, because the operator explicitly asked for a draft to review
+  // and edit, and nothing sends without their approval regardless.
+  if (bestScore < HOOK_QUALITY_THRESHOLD && !allowWeakHook) {
     await db
       .update(leads)
       .set({
@@ -102,10 +108,26 @@ export const generateEmailHandler: JobHandler<{ leadId: string }> = async (job) 
         requiresAttention: true,
         attentionReason:
           'Research has no company-specific hook, so any email would read as automated. ' +
-          'Add a real hiring signal or description and re-run research, or skip this lead.',
+          'Add a real hiring signal or description and re-run research, or use "Generate email" ' +
+          'on the lead to draft one anyway for manual editing.',
         updatedAt: new Date(),
       })
       .where(eq(leads.id, leadId));
+
+    // Make the skip visible instead of silently producing nothing.
+    await notify({
+      organizationId,
+      tier: 'tier_2_auto_notified',
+      title: `No email generated: ${ctx.company.name}`,
+      message:
+        `Generation was skipped — research found no company-specific hook (best score ${bestScore}/100). ` +
+        'Add a specific signal (a role, a number, or a date) and re-run research, or open the lead ' +
+        'and click "Generate email" to draft one anyway for manual review.',
+      relatedEntityType: 'lead',
+      relatedEntityId: leadId,
+      actionUrl: `/leads/${leadId}`,
+      actionLabel: 'Open lead',
+    });
 
     return {
       skipped: true,
