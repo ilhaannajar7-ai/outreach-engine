@@ -290,7 +290,15 @@ export async function syncSmartleadCampaign(
   }
 
   // --- 2. Backfill real RFC Message-IDs so replies can be threaded ----------
-  const needsMessageId = sentEmails.filter((e) => !e.messageIdHeader).slice(0, MAX_BACKFILL_PER_RUN);
+  // The send path stores our synthetic id as the message-id header (it has
+  // nothing better at that moment), so "needs backfill" means missing OR still
+  // synthetic — not merely empty.
+  const isSynthetic = (value: string | null) =>
+    !value || value.startsWith('sl-relay:') || value.startsWith('sl-reply:');
+
+  const needsMessageId = sentEmails
+    .filter((e) => isSynthetic(e.messageIdHeader))
+    .slice(0, MAX_BACKFILL_PER_RUN);
   const historyCache = new Map<string, HistoryItem[]>();
 
   for (const email of needsMessageId) {
