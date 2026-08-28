@@ -99,11 +99,27 @@ export class SmartleadEmailService implements EmailService {
       throw new EmailRetryableError('Smartlead did not accept the recipient for sending');
     }
 
+    // A relay campaign marks itself COMPLETED once it has sent everything it
+    // holds, and a completed campaign ignores newly added leads. Nudging it back
+    // to ACTIVE after every add keeps the relay permanently available instead of
+    // silently swallowing sends once the queue drains.
+    await this.ensureCampaignActive(campaignId);
+
     // Smartlead assigns the real RFC message-id when it sends (moments later);
     // add-lead is synchronous acceptance, so mint a stable id for our row.
     const providerMessageId = `sl-relay:${campaignId}:${request.to}:${Date.now()}`;
 
     return { providerMessageId, acceptedAt: new Date() };
+  }
+
+  /** Best-effort: return the relay campaign to ACTIVE so queued leads go out. */
+  private async ensureCampaignActive(campaignId: string): Promise<void> {
+    try {
+      await this.request('POST', `/campaigns/${campaignId}/status`, { status: 'START' });
+    } catch {
+      // Non-fatal: the lead is already accepted, and the 10-minute sync job
+      // re-asserts campaign status as a safety net.
+    }
   }
 
   /**

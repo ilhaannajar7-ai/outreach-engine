@@ -62,6 +62,16 @@ interface HistoryItem {
   time?: string;
 }
 
+async function slPost(path: string, apiKey: string, body: unknown): Promise<void> {
+  const url = `${API_BASE}${path}?api_key=${encodeURIComponent(apiKey)}`;
+  await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(20_000),
+  });
+}
+
 async function slFetch<T>(path: string, apiKey: string): Promise<T> {
   const url = `${API_BASE}${path}${path.includes('?') ? '&' : '?'}api_key=${encodeURIComponent(apiKey)}`;
   const response = await fetch(url, {
@@ -138,6 +148,14 @@ export async function syncSmartleadCampaign(
 
   const campaignId = await getRelayCampaignId(organizationId);
   if (!campaignId) return { ...empty, reason: 'No relay campaign configured' };
+
+  // The relay flips itself to COMPLETED once it drains, and a completed campaign
+  // ignores new leads. Re-assert ACTIVE so sending can never quietly stall.
+  try {
+    await slPost(`/campaigns/${campaignId}/status`, apiKey, { status: 'START' });
+  } catch {
+    // Best-effort; send() also nudges this on every add.
+  }
 
   const since = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
 
