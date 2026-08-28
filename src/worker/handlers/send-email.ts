@@ -8,7 +8,7 @@
  */
 
 import { db } from '@/db';
-import { emails, leads, contacts, organizations, sendingInboxes } from '@/db/schema';
+import { emails, leads, contacts, organizations, sendingInboxes, settings } from '@/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { getEmailService } from '@/lib/providers/email';
 import {
@@ -124,6 +124,23 @@ export const sendEmailHandler: JobHandler<{ emailId: string; force?: boolean }> 
     })
     .where(eq(emails.id, emailId));
 
+  // Smartlead sends through a relay campaign (it has no transactional endpoint);
+  // the campaign id lives in settings so it can change without a redeploy.
+  let relayCampaignId: string | undefined;
+  if (inbox.provider === 'smartlead') {
+    const [row2] = await db
+      .select({ value: settings.value })
+      .from(settings)
+      .where(
+        and(
+          eq(settings.organizationId, organizationId),
+          eq(settings.key, 'smartlead_relay_campaign_id'),
+        ),
+      )
+      .limit(1);
+    if (row2?.value != null) relayCampaignId = String(row2.value);
+  }
+
   try {
     const service = getEmailService(inbox.provider);
 
@@ -131,6 +148,9 @@ export const sendEmailHandler: JobHandler<{ emailId: string; force?: boolean }> 
       from: inbox.emailAddress,
       fromName: inbox.displayName || organization?.senderName || inbox.emailAddress,
       to: email.toAddress,
+      ...(contact.firstName || contact.fullName
+        ? { toName: contact.firstName ?? contact.fullName ?? undefined }
+        : {}),
       subject: email.subject,
       text: email.bodyText,
       ...(email.bodyHtml ? { html: email.bodyHtml } : {}),
@@ -138,6 +158,7 @@ export const sendEmailHandler: JobHandler<{ emailId: string; force?: boolean }> 
       ...(email.inReplyTo ? { inReplyTo: email.inReplyTo } : {}),
       ...(email.threadId ? { references: [email.threadId] } : {}),
       ...(inbox.providerInboxId ? { providerInboxId: inbox.providerInboxId } : {}),
+      ...(relayCampaignId ? { providerCampaignId: relayCampaignId } : {}),
       metadata: { email_id: emailId, lead_id: email.leadId, kind: email.kind },
     });
 

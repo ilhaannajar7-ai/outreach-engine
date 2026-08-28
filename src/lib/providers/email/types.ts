@@ -24,6 +24,16 @@ export interface SendEmailRequest {
 
   /** Provider-side mailbox id, when the provider manages inboxes (Smartlead). */
   providerInboxId?: string;
+
+  /** Recipient's first name, for providers that store leads (Smartlead). */
+  toName?: string;
+
+  /**
+   * Provider-side campaign id. Smartlead has no transactional send endpoint — it
+   * sends only through campaigns — so an approved email is delivered by adding
+   * the recipient to this "relay" campaign with the email's subject/body.
+   */
+  providerCampaignId?: string;
 }
 
 export interface SendEmailResult {

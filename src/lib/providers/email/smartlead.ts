@@ -45,35 +45,67 @@ export class SmartleadEmailService implements EmailService {
     this.apiKey = key;
   }
 
+  /**
+   * Send by adding the recipient to the relay campaign.
+   *
+   * Smartlead has NO transactional/one-off send endpoint (`/emails/send` returns
+   * 404) — it sends only through campaigns. So an approved email is delivered by
+   * adding the recipient as a lead whose custom fields carry this email's exact
+   * subject and body; the relay campaign's one-step sequence ({{subject}} /
+   * {{body}}) substitutes them and sends from the connected, warmed mailbox.
+   * `providerCampaignId` identifies that relay campaign.
+   */
   async send(request: SendEmailRequest): Promise<SendEmailResult> {
-    const body = {
-      email_account_id: request.providerInboxId,
-      to_email: request.to,
-      from_name: request.fromName,
-      subject: request.subject,
-      body_text: request.text,
-      body_html: request.html ?? textToHtml(request.text),
-      reply_to: request.replyTo ?? request.from,
-      ...(request.inReplyTo ? { in_reply_to: request.inReplyTo } : {}),
-      ...(request.references?.length ? { references: request.references.join(' ') } : {}),
-      ...(request.metadata ? { custom_fields: request.metadata } : {}),
+    const campaignId = request.providerCampaignId;
+    if (!campaignId) {
+      throw new EmailFatalError(
+        'Smartlead relay campaign is not configured — set the "smartlead_relay_campaign_id" setting.',
+      );
+    }
+
+    // Follow-ups must thread within Smartlead (its reply endpoint); that path is
+    // not wired yet, so fail loudly rather than send a broken thread.
+    if (request.inReplyTo) {
+      throw new EmailFatalError(
+        'Follow-up sending through the Smartlead relay is not configured yet.',
+      );
+    }
+
+    const bodyHtml = request.html ?? textToHtml(request.text);
+
+    const response = (await this.request('POST', `/campaigns/${campaignId}/leads`, {
+      lead_list: [
+        {
+          email: request.to,
+          ...(request.toName ? { first_name: request.toName } : {}),
+          custom_fields: { subject: request.subject, body: bodyHtml },
+        },
+      ],
+    })) as {
+      upload_count?: number;
+      already_added_to_campaign?: number;
+      invalid_email_count?: number;
+      is_lead_limit_exhausted?: boolean;
     };
 
-    const response = await this.request('POST', '/emails/send', body);
+    if (response.invalid_email_count && response.invalid_email_count > 0) {
+      throw new EmailFatalError(`Smartlead rejected ${request.to} as an invalid address`, true);
+    }
+    if (response.is_lead_limit_exhausted) {
+      throw new EmailRetryableError('Smartlead campaign lead limit reached');
+    }
+    // upload_count>0 = newly accepted; already_added>0 = an idempotent retry of a
+    // send whose status write did not land. Both mean the send is (or will be)
+    // handled by Smartlead, so treat them as success rather than re-sending.
+    if (!response.upload_count && !response.already_added_to_campaign) {
+      throw new EmailRetryableError('Smartlead did not accept the recipient for sending');
+    }
 
-    const messageId =
-      (response as { message_id?: string; id?: string }).message_id ??
-      (response as { id?: string }).id;
+    // Smartlead assigns the real RFC message-id when it sends (moments later);
+    // add-lead is synchronous acceptance, so mint a stable id for our row.
+    const providerMessageId = `sl-relay:${campaignId}:${request.to}:${Date.now()}`;
 
-    if (!messageId) throw new EmailFatalError('Smartlead returned no message id');
-
-    return {
-      providerMessageId: String(messageId),
-      ...(typeof (response as { thread_id?: string }).thread_id === 'string'
-        ? { threadId: (response as { thread_id: string }).thread_id }
-        : {}),
-      acceptedAt: new Date(),
-    };
+    return { providerMessageId, acceptedAt: new Date() };
   }
 
   /**
