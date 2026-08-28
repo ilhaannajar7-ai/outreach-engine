@@ -339,6 +339,8 @@ export const syncEmailEventsHandler: JobHandler = async (job) => {
   const organizationId = job.organizationId;
   if (!organizationId) return { recovered: 0 };
 
+  const queue = getJobQueue();
+
   const stuck = await sql<{ id: string }[]>`
     UPDATE emails
     SET status = 'approved',
@@ -351,7 +353,6 @@ export const syncEmailEventsHandler: JobHandler = async (job) => {
   `;
 
   if (stuck.length > 0) {
-    const queue = getJobQueue();
     for (const row of stuck) {
       await queue.enqueue('send_email', { emailId: row.id }, { organizationId, priority: 5 });
     }
@@ -364,5 +365,29 @@ export const syncEmailEventsHandler: JobHandler = async (job) => {
     );
   }
 
-  return { recovered: stuck.length };
+  // Emails approved outside the send window are parked as 'queued' with a future
+  // scheduledFor. Nothing else re-attempts them, so re-enqueue a send job once
+  // their window has arrived — otherwise a deferred email would never send.
+  const due = await sql<{ id: string }[]>`
+    SELECT id FROM emails
+    WHERE organization_id = ${organizationId}
+      AND status = 'queued'
+      AND approved_by IS NOT NULL
+      AND (scheduled_for IS NULL OR scheduled_for <= NOW())
+  `;
+
+  if (due.length > 0) {
+    const hourBucket = new Date().toISOString().slice(0, 13);
+    for (const row of due) {
+      // Per-hour key: a send job that re-defers (window still closed) won't pile
+      // up duplicates, but each new hour gets a fresh attempt.
+      await queue.enqueue(
+        'send_email',
+        { emailId: row.id },
+        { organizationId, priority: 5, idempotencyKey: `send-due:${row.id}:${hourBucket}` },
+      );
+    }
+  }
+
+  return { recovered: stuck.length, requeuedDue: due.length };
 };

@@ -20,8 +20,8 @@ import {
 import { notifyHandled, notifyStopped } from '@/lib/notifications';
 import type { JobHandler } from '../types';
 
-export const sendEmailHandler: JobHandler<{ emailId: string }> = async (job) => {
-  const { emailId } = job.payload;
+export const sendEmailHandler: JobHandler<{ emailId: string; force?: boolean }> = async (job) => {
+  const { emailId, force } = job.payload;
   const organizationId = job.organizationId;
   if (!organizationId) throw new Error('send_email requires an organizationId');
 
@@ -72,8 +72,9 @@ export const sendEmailHandler: JobHandler<{ emailId: string }> = async (job) => 
     return { skipped: true, reason: 'Lead already replied' };
   }
 
-  if (!isWithinSendWindow()) {
+  if (!force && !isWithinSendWindow()) {
     // Not a failure — reschedule into the next window rather than burning an attempt.
+    // `force` (a manual "send now" / test send) deliberately bypasses the window.
     const nextWindow = nextSendWindowStart();
     await db
       .update(emails)

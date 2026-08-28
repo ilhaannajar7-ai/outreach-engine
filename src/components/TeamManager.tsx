@@ -7,11 +7,35 @@ const ROLES = ['owner', 'admin', 'member', 'viewer'] as const;
 type Role = (typeof ROLES)[number];
 
 const ROLE_HELP: Record<Role, string> = {
-  owner: 'Full control, including billing and ownership. Only an owner can assign this.',
-  admin: 'Manage everything day to day — leads, sending, settings, and team.',
-  member: 'Do the work — import, research, generate, approve — but not change settings.',
-  viewer: 'Read-only. Can see dashboards and reports, cannot change anything.',
+  owner: 'Full control of everything, including ownership. Only an owner can add, remove, or change another owner.',
+  admin: 'Manage day to day — leads, sending, settings, and the team (add, remove, and re-role members). Cannot remove or change the owner.',
+  member: 'Do the work — import, research, generate, approve, and send — but cannot change settings or manage the team.',
+  viewer: 'Read-only. Can view dashboards and reports, and change nothing at all.',
 };
+
+/** What each role can do, shown as a matrix so access is explicit, not implied. */
+const CAPABILITIES: { label: string; allowed: Record<Role, boolean> }[] = [
+  {
+    label: 'View dashboards & reports',
+    allowed: { owner: true, admin: true, member: true, viewer: true },
+  },
+  {
+    label: 'Run outreach (import → research → generate → approve & send)',
+    allowed: { owner: true, admin: true, member: true, viewer: false },
+  },
+  {
+    label: 'Change settings (AI, sending, prompts)',
+    allowed: { owner: true, admin: true, member: false, viewer: false },
+  },
+  {
+    label: 'Manage team — add, remove & re-role members',
+    allowed: { owner: true, admin: true, member: false, viewer: false },
+  },
+  {
+    label: 'Add, remove, or change the owner',
+    allowed: { owner: true, admin: false, member: false, viewer: false },
+  },
+];
 
 export interface TeamMember {
   userId: string;
@@ -115,13 +139,54 @@ export function TeamManager({
   const roleOptions = ROLES.filter((r) => r !== 'owner' || isOwner);
 
   return (
-    <div className="card">
-      <div className="ch">
-        <h3>Team</h3>
-        <span className="hint">
-          {members.length} member{members.length === 1 ? '' : 's'}
-        </span>
+    <>
+      <div className="card">
+        <div className="ch">
+          <h3>Role permissions</h3>
+          <span className="hint">what each role can do</span>
+        </div>
+        <div className="tablewrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Capability</th>
+                <th style={{ textAlign: 'center' }}>Owner</th>
+                <th style={{ textAlign: 'center' }}>Admin</th>
+                <th style={{ textAlign: 'center' }}>Member</th>
+                <th style={{ textAlign: 'center' }}>Viewer</th>
+              </tr>
+            </thead>
+            <tbody>
+              {CAPABILITIES.map((cap) => (
+                <tr key={cap.label}>
+                  <td style={{ fontSize: 12.5 }}>{cap.label}</td>
+                  {(ROLES as readonly Role[]).map((role) => (
+                    <td key={role} style={{ textAlign: 'center' }}>
+                      {cap.allowed[role] ? (
+                        <span style={{ color: 'var(--good)', fontWeight: 700 }}>✓</span>
+                      ) : (
+                        <span style={{ color: 'var(--faint)' }}>—</span>
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="muted" style={{ fontSize: 11.5, marginTop: 10, lineHeight: 1.6 }}>
+          Access is enforced everywhere — a viewer cannot change anything, a member cannot reach
+          settings or the team, and only an owner can add, remove, or change another owner.
+        </div>
       </div>
+
+      <div className="card">
+        <div className="ch">
+          <h3>Team</h3>
+          <span className="hint">
+            {members.length} member{members.length === 1 ? '' : 's'}
+          </span>
+        </div>
 
       {message && (
         <div className={`banner ${message.kind}`} style={{ marginBottom: 12 }}>
@@ -265,7 +330,8 @@ export function TeamManager({
             </form>
           )}
         </div>
-      )}
-    </div>
+        )}
+      </div>
+    </>
   );
 }
