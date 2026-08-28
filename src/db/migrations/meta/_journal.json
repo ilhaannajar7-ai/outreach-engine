@@ -57,6 +57,13 @@
       "when": 1787689627029,
       "tag": "0007_puzzling_absorbing_man",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787901955373,
+      "tag": "0008_cloudy_felicia_hardy",
+      "breakpoints": true
     }
   ]
 }

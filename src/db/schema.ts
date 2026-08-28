@@ -28,6 +28,7 @@ import {
   primaryKey,
 } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
+import type { ThemePreferences } from '@/lib/theme';
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -228,6 +229,9 @@ export const users = pgTable(
     twoFactorEnabledAt: timestamp('two_factor_enabled_at', { withTimezone: true }),
     /** Single-use recovery codes, stored hashed, for a lost device. */
     twoFactorRecoveryCodes: jsonb('two_factor_recovery_codes').$type<string[]>(),
+
+    /** Per-user UI theme (colours, fonts, density, placement). Null = defaults. */
+    themePreferences: jsonb('theme_preferences').$type<ThemePreferences>(),
 
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

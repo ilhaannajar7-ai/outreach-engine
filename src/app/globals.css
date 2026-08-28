@@ -97,11 +97,17 @@ body {
   padding: 0;
 }
 
+/* Text-size control: scaling the root font-size scales every rem-based size in
+   the app at once. --font-scale is set per-user on <html>. */
+html {
+  font-size: calc(16px * var(--font-scale, 1));
+}
+
 body {
   background: var(--bg);
   color: var(--ink);
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: 0.875rem; /* 14px at scale 1, scales with --font-scale */
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
@@ -340,6 +346,42 @@ select {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+/* --- Per-user theme: density -------------------------------------------- */
+:root[data-density='compact'] .content {
+  padding: 12px 14px 44px;
+  gap: 10px;
+}
+:root[data-density='compact'] .card {
+  padding: 11px;
+}
+:root[data-density='compact'] .topbar {
+  padding: 9px 16px;
+}
+:root[data-density='compact'] .sidebar {
+  padding: 10px 8px;
+}
+:root[data-density='compact'] .kpis {
+  gap: 8px;
+}
+
+/* --- Per-user theme: navigation placement (right side) ------------------ */
+:root[data-sidebar='right'] .shell {
+  grid-template-columns: 1fr 232px;
+}
+:root[data-sidebar='right'] .sidebar {
+  order: 2;
+  border-right: none;
+  border-left: 1px solid var(--line);
+}
+:root[data-sidebar='right'] .main {
+  order: 1;
+}
+@media (max-width: 900px) {
+  :root[data-sidebar='right'] .shell {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* --- Controls ------------------------------------------------------------ */
