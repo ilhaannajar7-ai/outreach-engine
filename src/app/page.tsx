@@ -8,6 +8,7 @@ import { Sidebar } from '@/components/Sidebar';
 import { TopBar } from '@/components/TopBar';
 import { ActivityChart, FunnelChart, DonutChart, Sparkline } from '@/components/charts';
 import { DomainPanel } from '@/components/DomainPanel';
+import { SmartleadPanel } from '@/components/SmartleadPanel';
 import { formatStatus, statusPill, formatOperation, formatComponent } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
@@ -228,6 +229,9 @@ export default async function DashboardPage() {
               </div>
             </div>
           </div>
+
+          {/* --- Smartlead live warm-up / deliverability ------------------- */}
+          <SmartleadPanel />
 
           {/* --- Sending infrastructure ------------------------------------ */}
           <DomainPanel domains={infrastructure} />
