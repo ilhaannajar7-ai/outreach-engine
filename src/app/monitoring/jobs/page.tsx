@@ -65,6 +65,7 @@ export default async function JobsPage({
           title="Background jobs"
           subtitle="Everything the worker is doing, has done, or gave up on"
           unreadCount={unreadCount}
+          refreshAutoSeconds={30}
         />
 
         <div className="content">

@@ -40,6 +40,7 @@ export default async function DashboardPage() {
           title="Dashboard"
           subtitle={`${session.user.organizationName} · last 14 days`}
           unreadCount={unreadCount}
+          refreshAutoSeconds={120}
         />
 
         <div className="content">

@@ -49,6 +49,7 @@ export default async function HealthPage() {
           title="System health"
           subtitle="Dependency status and background job queue"
           unreadCount={unreadCount}
+          refreshAutoSeconds={60}
         />
 
         <div className="content">

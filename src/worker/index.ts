@@ -142,10 +142,13 @@ async function scheduleRecurringJobs(): Promise<void> {
       { organizationId: org.id, idempotencyKey: `followups:${org.id}:${hourBucket}` },
     );
 
+    // Every 10 minutes: recovers interrupted sends, releases deferred emails
+    // whose window has arrived, and pulls Smartlead engagement + real
+    // Message-IDs back in, so the dashboard stays current on its own.
     await queue.enqueue(
       'sync_email_events',
       {},
-      { organizationId: org.id, idempotencyKey: `sync:${org.id}:${hourBucket}` },
+      { organizationId: org.id, idempotencyKey: `sync:${org.id}:${tenMinBucket}` },
     );
 
     // Poll the mailbox for replies every 10 minutes — the reliable path when

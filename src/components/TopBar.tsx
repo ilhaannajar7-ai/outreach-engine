@@ -3,17 +3,24 @@
 import { useState } from 'react';
 import { signOut, useSession } from 'next-auth/react';
 import Link from 'next/link';
+import { RefreshButton } from '@/components/RefreshButton';
 
 export function TopBar({
   title,
   subtitle,
   unreadCount = 0,
   actions,
+  refresh = true,
+  refreshAutoSeconds,
 }: {
   title: string;
   subtitle?: string;
   unreadCount?: number;
   actions?: React.ReactNode;
+  /** Every data page gets a refresh control; set false for static pages. */
+  refresh?: boolean;
+  /** Offer background auto-refresh at this interval, for pages that move. */
+  refreshAutoSeconds?: number;
 }) {
   const { data: session } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -35,6 +42,8 @@ export function TopBar({
       <div className="spacer" />
 
       {actions}
+
+      {refresh && <RefreshButton {...(refreshAutoSeconds ? { autoSeconds: refreshAutoSeconds } : {})} />}
 
       <Link href="/notifications" className="bell" aria-label={`Notifications (${unreadCount} unread)`}>
         🔔

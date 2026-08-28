@@ -60,6 +60,7 @@ export default async function QueuePage() {
           title="Approval queue"
           subtitle={`${drafts.length} draft${drafts.length === 1 ? '' : 's'} waiting · ${capacity.remaining} sends available today`}
           unreadCount={unreadCount}
+          refreshAutoSeconds={60}
         />
 
         <div className="content">

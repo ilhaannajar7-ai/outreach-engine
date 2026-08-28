@@ -28,6 +28,7 @@ import { getEnrichmentService } from '@/lib/providers/enrichment';
 import { notifyHandled, notifyStopped, notifyAutoFixed } from '@/lib/notifications';
 import { getBudgetStatus } from '@/lib/ai/budget';
 import { warmupDailyLimit } from '@/lib/sending/inbox-rotation';
+import { syncSmartleadCampaign, refreshInboxCountersFromEmails } from '@/lib/smartlead/sync';
 import type { JobHandler } from '../types';
 
 /**
@@ -389,5 +390,17 @@ export const syncEmailEventsHandler: JobHandler = async (job) => {
     }
   }
 
-  return { recovered: stuck.length, requeuedDue: due.length };
+  // Pull Smartlead's own send/engagement data back in. This is what keeps the
+  // dashboard current without depending on webhooks firing for relay sends, and
+  // it backfills the real Message-IDs that reply threading needs.
+  let smartlead: Awaited<ReturnType<typeof syncSmartleadCampaign>> | null = null;
+  try {
+    smartlead = await syncSmartleadCampaign(organizationId);
+    await refreshInboxCountersFromEmails(organizationId);
+  } catch (error) {
+    // Never fail the whole maintenance pass because a third party was slow.
+    console.error('[sync_email_events] Smartlead sync failed:', error);
+  }
+
+  return { recovered: stuck.length, requeuedDue: due.length, smartlead };
 };

@@ -43,6 +43,7 @@ export function Sidebar({
       label: 'Outreach',
       items: [
         { href: '/leads', label: 'Leads', icon: '◍', ...(counts.leads ? { count: counts.leads } : {}) },
+        { href: '/settings/sourcing', label: 'Lead sourcing', icon: '⌕' },
         {
           href: '/queue',
           label: 'Approval queue',
