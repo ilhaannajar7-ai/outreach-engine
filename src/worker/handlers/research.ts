@@ -9,6 +9,7 @@ import { db } from '@/db';
 import { companies, organizations, aiResearch, leads, settings, type ScoredHook } from '@/db/schema';
 import { and, eq, desc } from 'drizzle-orm';
 import { researchCompany } from '@/lib/ai/operations';
+import { readCompanyWebsite } from '@/lib/enrichment/website';
 import { assessHook, assessResearch } from '@/lib/ai/hook-quality';
 import { notify, notifyStopped } from '@/lib/notifications';
 import { getJobQueue } from '@/lib/providers/queue';
@@ -68,10 +69,16 @@ export const researchHandler: JobHandler<{
       .where(eq(leads.id, leadId));
   }
 
+  // Read their own site first. Without it research only has the CSV row, and
+  // generic hooks are exactly what the quality gate rejects. Never fatal — a
+  // site that is down or blocking us just means less material.
+  const website = await readCompanyWebsite(company.domain);
+
   try {
     const { data, meta } = await researchCompany({
       organizationId,
       companyId,
+      website,
       company: {
         name: company.name,
         domain: company.domain,
@@ -214,6 +221,11 @@ export const researchHandler: JobHandler<{
       fitScore: Math.round(data.fit_score),
       hookQuality: quality.bestScore,
       usableHooks: quality.usableHooks.length,
+      // Whether the site was readable is the single best predictor of hook
+      // quality, so it belongs in the job result when diagnosing weak research.
+      websiteRead: website.ok,
+      websitePages: website.pagesRead.length,
+      ...(website.ok ? {} : { websiteError: website.error }),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

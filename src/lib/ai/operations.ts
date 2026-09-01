@@ -204,14 +204,23 @@ export async function researchCompany(params: {
     servicesOffered?: string | null;
     valueProposition?: string | null;
   };
+  /** Text scraped from the prospect's own site. Untrusted reference material. */
+  website?: { ok: boolean; text: string; title?: string; error?: string } | null;
 }): Promise<{ data: ResearchOutput; meta: AiCallMeta }> {
+  const website = params.website;
+
   return execute({
     organizationId: params.organizationId,
     operation: 'research',
     companyId: params.companyId,
     schema: researchSchema,
-    estimatedCost: 0.005,
+    // Site text makes this call meaningfully larger than a bare CSV row.
+    estimatedCost: website?.ok ? 0.02 : 0.005,
     variables: {
+      website_content: website?.ok
+        ? website.text
+        : `Not available (${website?.error ?? 'no website was read'}). ` +
+          'Work only from the facts above; do not invent details about their site.',
       company_name: params.company.name,
       company_domain: params.company.domain ?? 'unknown',
       industry: params.company.industry ?? 'unknown',

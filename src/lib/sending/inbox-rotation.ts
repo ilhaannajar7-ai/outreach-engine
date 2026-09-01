@@ -39,11 +39,19 @@ export class NoCapacityError extends Error {
 }
 
 /**
- * Warm-up ramp. Starts at 10/day and roughly doubles each week until the
- * inbox's configured maximum. Inbox providers score new senders on volume
- * consistency, so this curve is deliberately gentle — going faster is the most
- * common way to burn a domain.
+ * Warm-up ramp: 10/day, climbing by 10–15 a week until the inbox's configured
+ * maximum. Inbox providers score new senders on volume *consistency*, so the
+ * curve is deliberately linear rather than doubling — a sudden jump is the most
+ * common way to burn a domain, and every step here is one a human sender could
+ * plausibly produce.
+ *
+ * The ceiling is `maxDailySendLimit` on the inbox, so raising the ramp's reach
+ * is a dashboard edit, not a code change. Note that sustained cold-email volume
+ * above ~50/day per mailbox carries materially higher spam-placement risk
+ * regardless of reputation; the safer way to add capacity is more mailboxes.
  */
+const WARMUP_SCHEDULE = [10, 20, 35, 50, 65, 80, 95, 110] as const;
+
 export function warmupDailyLimit(
   warmupStartedAt: Date | null,
   maxLimit: number,
@@ -55,8 +63,9 @@ export function warmupDailyLimit(
   const daysElapsed = Math.floor((Date.now() - warmupStartedAt.getTime()) / (24 * 60 * 60 * 1000));
   const week = Math.floor(daysElapsed / 7);
 
-  const schedule = [10, 20, 35, 50, 75, 100];
-  const target = schedule[week] ?? maxLimit;
+  // Past the end of the schedule the inbox has served its full ramp and simply
+  // sits at its configured maximum.
+  const target = WARMUP_SCHEDULE[week] ?? maxLimit;
 
   return Math.min(target, maxLimit);
 }
