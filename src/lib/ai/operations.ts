@@ -330,6 +330,8 @@ export async function generateFollowUp(params: {
   /** Drives tone: someone who has opened twice is warmer than total silence. */
   engagement?: { openCount: number } | null;
   organization: { senderName?: string | null; senderTitle?: string | null };
+  /** Campaign tone + variant instructions, so a follow-up matches its arm. */
+  campaignInstructions?: string | null;
 }): Promise<{ data: FollowUpOutput; meta: AiCallMeta }> {
   const isFinal = params.followUpNumber >= params.maxFollowUps;
   const openCount = params.engagement?.openCount ?? 0;
@@ -369,6 +371,9 @@ export async function generateFollowUp(params: {
         : 'None recorded.',
       sender_name: params.organization.senderName ?? 'The team',
       sender_title: params.organization.senderTitle ?? '',
+      campaign_instructions: params.campaignInstructions
+        ? `Additional instructions for this campaign:\n${params.campaignInstructions}`
+        : '',
     },
   });
 }

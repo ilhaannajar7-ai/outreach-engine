@@ -24,6 +24,31 @@ import { variantPromptAdditions } from '@/lib/experiments';
 import { notify, notifyStopped } from '@/lib/notifications';
 import type { JobHandler } from '../types';
 
+/**
+ * Campaign + variant guidance for the prompt, layered weakest first because
+ * later lines win: campaign tone applies to every lead, campaign additions
+ * refine it, and the variant's instructions are what differ between arms.
+ *
+ * Shared by the initial email and its follow-ups so an A/B arm keeps its voice
+ * for the whole sequence — otherwise the test only ever measures email one.
+ */
+function buildCampaignInstructions(ctx: {
+  campaign?: { toneInstructions?: string | null; customPromptAdditions?: string | null } | null;
+  variant?: Parameters<typeof variantPromptAdditions>[0];
+}): string | null {
+  return (
+    [
+      ctx.campaign?.toneInstructions?.trim()
+        ? `Tone for this campaign: ${ctx.campaign.toneInstructions.trim()}`
+        : '',
+      ctx.campaign?.customPromptAdditions ?? '',
+      variantPromptAdditions(ctx.variant ?? null),
+    ]
+      .filter(Boolean)
+      .join('\n\n') || null
+  );
+}
+
 /** Load every row the generators need, scoped to the org. */
 async function loadLeadContext(organizationId: string, leadId: string) {
   const [row] = await db
@@ -166,12 +191,7 @@ export const generateEmailHandler: JobHandler<{ leadId: string; allowWeakHook?: 
         senderTitle: ctx.organization?.senderTitle ?? null,
         calendarLink: ctx.organization?.calendarLink ?? null,
       },
-      // Campaign instructions apply to every lead in the campaign; the variant's
-      // instructions are what differ between arms and so must come last.
-      campaignInstructions:
-        [ctx.campaign?.customPromptAdditions ?? '', variantPromptAdditions(ctx.variant)]
-          .filter(Boolean)
-          .join('\n\n') || null,
+      campaignInstructions: buildCampaignInstructions(ctx),
     });
 
     const [email] = await db
@@ -324,6 +344,9 @@ export const generateFollowUpHandler: JobHandler<{ leadId: string }> = async (jo
         senderName: ctx.organization?.senderName ?? null,
         senderTitle: ctx.organization?.senderTitle ?? null,
       },
+      // Same guidance as the initial email, so the follow-up stays in the voice
+      // of whichever arm this lead belongs to.
+      campaignInstructions: buildCampaignInstructions(ctx),
     });
 
     const [email] = await db

@@ -310,6 +310,8 @@ Research brief:
 
 Sender: {{sender_name}}, {{sender_title}}
 
+{{campaign_instructions}}
+
 Write the follow-up as JSON.`,
 };
 
