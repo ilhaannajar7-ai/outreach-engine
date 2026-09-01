@@ -29,6 +29,7 @@ import { notifyHandled, notifyStopped, notifyAutoFixed } from '@/lib/notificatio
 import { getBudgetStatus } from '@/lib/ai/budget';
 import { warmupDailyLimit } from '@/lib/sending/inbox-rotation';
 import { syncSmartleadCampaign, refreshInboxCountersFromEmails } from '@/lib/smartlead/sync';
+import { generateWeeklyInsights } from '@/lib/insights/weekly';
 import type { JobHandler } from '../types';
 
 /**
@@ -178,6 +179,25 @@ export const dailyDigestHandler: JobHandler = async (job) => {
   const rampedInboxes = await rampWarmupLimits(organizationId);
   const reputationChanges = await updateReputationScores(organizationId);
 
+  // Weekly performance analysis rides on Monday's digest rather than owning a
+  // job type of its own — same schedule guarantees, no enum migration.
+  let weeklyInsights: string | null = null;
+  if (new Date().getDay() === 1) {
+    try {
+      const report = await generateWeeklyInsights(organizationId, 7);
+      weeklyInsights = report.analysis?.headline ?? 'Weekly report generated.';
+      await notifyHandled(
+        organizationId,
+        'Weekly performance report ready',
+        `${report.totals.sent} sent · ${report.totals.replied} replies (${report.totals.replyRate.toFixed(1)}%) in the last 7 days.\n\n` +
+          `${report.analysis?.headline ?? ''}`,
+        { actionUrl: '/insights', actionLabel: 'Open insights' },
+      );
+    } catch (error) {
+      console.error('[daily_digest] weekly insights failed:', error);
+    }
+  }
+
   const budget = await getBudgetStatus(organizationId);
   if (budget.isExceeded) {
     await notifyStopped(
@@ -218,7 +238,7 @@ export const dailyDigestHandler: JobHandler = async (job) => {
     }
   }
 
-  return { rampedInboxes, reputationChanges, budget };
+  return { rampedInboxes, reputationChanges, budget, weeklyInsights };
 };
 
 /** Move each warming inbox onto its scheduled daily limit for today. */

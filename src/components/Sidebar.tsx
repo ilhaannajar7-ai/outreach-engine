@@ -36,6 +36,8 @@ export function Sidebar({
       label: 'Overview',
       items: [
         { href: '/', label: 'Dashboard', icon: '▚' },
+        { href: '/pipeline', label: 'Pipeline', icon: '⇉' },
+        { href: '/insights', label: 'Insights', icon: '◎' },
         { href: '/reports', label: 'Reports', icon: '▦' },
       ],
     },
