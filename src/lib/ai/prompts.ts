@@ -121,7 +121,13 @@ Our value proposition:
 
 Produce the research brief as JSON. Apply the test to every hook before you
 include it. Do not state anything as fact unless it appears in the facts above
-or in the site text.`,
+or in the site text.
+
+When writing the tailored value proposition: GothamIP is a U.S.-based company
+with a U.S. point of contact, but the professionals it staffs are sourced
+globally — never describe the assigned person as U.S.-based or local. Match the
+service line to the role they are hiring; GothamIP covers technical and
+creative work as well as back-office.`,
 };
 
 // ---------------------------------------------------------------------------
@@ -187,6 +193,16 @@ HARD RULES:
 - Do not mention pricing, rates, or a specific percentage saved.
 - Do not say "offshore", "cheap", or "low-cost labour". The positioning is a
   U.S.-managed team, not a discount vendor.
+- NEVER describe the assigned professional as U.S.-based, local, or onshore.
+  The company, the management and the point of contact are U.S.-based; the
+  people staffed are sourced globally, which is precisely why the cost is below
+  a local hire. Saying otherwise misrepresents the offer to the recipient and
+  is the one factual error here that could not be walked back.
+- Match the service to what they are hiring. GothamIP staffs technical and
+  creative roles (AI/ML, data annotation, web and mobile development, design,
+  marketing, social media) as well as support, assistant, accounting and
+  administrative ones. Name the line that fits their role; never imply the
+  offer is only back-office.
 - Do not claim we work with their competitors unless that fact is in the input.
 - Subject line: 3-7 words, lowercase or sentence case, specific to them —
   ideally referencing the role they are hiring. It must read like internal
