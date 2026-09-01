@@ -41,8 +41,10 @@ const createSchema = z.object({
   targetIndustry: z.string().max(255).optional(),
   targetLocation: z.string().max(255).optional(),
   // Capped at 3 (four touches total). Beyond this, reply rates collapse while
-  // spam complaints climb past the 0.3% that gets a domain filtered.
-  maxFollowUps: z.number().int().min(0).max(3).default(3),
+  // spam complaints climb past the 0.3% that gets a domain filtered. Defaults
+  // to 2 — the house standard — so a campaign created without thinking about
+  // it matches the sequence the sending limits were planned around.
+  maxFollowUps: z.number().int().min(0).max(3).default(2),
   followUp1DelayDays: z.number().int().min(1).max(60).default(4),
   followUp2DelayDays: z.number().int().min(1).max(60).default(7),
   dailySendLimit: z.number().int().min(1).max(1000).nullable().default(null),
