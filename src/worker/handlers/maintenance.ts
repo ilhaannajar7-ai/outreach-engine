@@ -30,6 +30,7 @@ import { getBudgetStatus } from '@/lib/ai/budget';
 import { warmupDailyLimit } from '@/lib/sending/inbox-rotation';
 import { syncSmartleadCampaign, refreshInboxCountersFromEmails } from '@/lib/smartlead/sync';
 import { generateWeeklyInsights } from '@/lib/insights/weekly';
+import { dripNewLeads } from '@/lib/sending/lead-drip';
 import type { JobHandler } from '../types';
 
 /**
@@ -179,6 +180,16 @@ export const dailyDigestHandler: JobHandler = async (job) => {
   const rampedInboxes = await rampWarmupLimits(organizationId);
   const reputationChanges = await updateReputationScores(organizationId);
 
+  // Promote only as many new leads as today's sending capacity justifies, so a
+  // large import is researched and drafted at the rate it can actually be sent
+  // rather than all at once.
+  let drip: Awaited<ReturnType<typeof dripNewLeads>> | null = null;
+  try {
+    drip = await dripNewLeads(organizationId);
+  } catch (error) {
+    console.error('[daily_digest] lead drip failed:', error);
+  }
+
   // Weekly performance analysis rides on Monday's digest rather than owning a
   // job type of its own — same schedule guarantees, no enum migration.
   let weeklyInsights: string | null = null;
@@ -238,7 +249,7 @@ export const dailyDigestHandler: JobHandler = async (job) => {
     }
   }
 
-  return { rampedInboxes, reputationChanges, budget, weeklyInsights };
+  return { rampedInboxes, reputationChanges, budget, weeklyInsights, drip };
 };
 
 /** Move each warming inbox onto its scheduled daily limit for today. */
