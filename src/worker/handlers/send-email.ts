@@ -18,6 +18,7 @@ import {
   NoCapacityError,
 } from '@/lib/sending/inbox-rotation';
 import { notifyHandled, notifyStopped } from '@/lib/notifications';
+import { env } from '@/lib/env';
 import type { JobHandler } from '../types';
 
 export const sendEmailHandler: JobHandler<{ emailId: string; force?: boolean }> = async (job) => {
@@ -289,16 +290,97 @@ async function advanceLeadAfterSend(
     .where(eq(leads.id, leadId));
 }
 
-/** Start of the next weekday send window, in the configured timezone. */
-function nextSendWindowStart(): Date {
-  const next = new Date();
-  next.setDate(next.getDate() + 1);
-  next.setHours(9, 0, 0, 0);
+/**
+ * How far the given instant is from UTC in `timeZone`, in milliseconds.
+ *
+ * Node has no API to build a Date from a wall-clock time in a named zone, so
+ * this reads the zone's own rendering of the instant back as if it were UTC and
+ * takes the difference. That difference is the offset, DST included.
+ */
+function zoneOffsetMs(at: Date, timeZone: string): number {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hour12: false,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    })
+      .formatToParts(at)
+      .map((p) => [p.type, p.value]),
+  ) as Record<string, string>;
 
-  // Skip Saturday and Sunday.
-  while (next.getDay() === 0 || next.getDay() === 6) {
-    next.setDate(next.getDate() + 1);
+  // 'en-US' renders midnight as hour 24; Date.UTC wants 0.
+  const hour = Number(parts.hour) % 24;
+
+  const asIfUtc = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    hour,
+    Number(parts.minute),
+    Number(parts.second),
+  );
+
+  return asIfUtc - at.getTime();
+}
+
+/**
+ * Start of the next send window, as a real instant.
+ *
+ * Two bugs lived here. It always advanced a day, so an email approved before
+ * the window opened lost that whole day; and it built the time with
+ * `setHours`, which uses the *server's* zone — on a UTC host that produced
+ * 09:00 UTC, i.e. 05:00 in a US send zone, still outside the window. The retry
+ * therefore deferred again on arrival, every day, and the email never sent.
+ *
+ * Now: work in the configured zone, use today when the window has not opened
+ * yet, otherwise the next weekday, and convert that wall-clock time back to an
+ * instant using the zone's offset.
+ */
+function nextSendWindowStart(now = new Date()): Date {
+  const timeZone = env.SEND_TIMEZONE;
+  const startHour = env.SEND_WINDOW_START_HOUR;
+
+  const local = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    weekday: 'short',
+  }).formatToParts(now);
+
+  const get = (type: string) => local.find((p) => p.type === type)?.value ?? '';
+
+  let year = Number(get('year'));
+  let month = Number(get('month'));
+  let day = Number(get('day'));
+  const hour = Number(get('hour')) % 24;
+  let weekday = get('weekday');
+
+  // Today still counts if its window has not opened yet and it is a weekday.
+  const todayStillUsable = hour < startHour && weekday !== 'Sat' && weekday !== 'Sun';
+
+  if (!todayStillUsable) {
+    do {
+      const stepped = new Date(Date.UTC(year, month - 1, day) + 24 * 60 * 60 * 1000);
+      year = stepped.getUTCFullYear();
+      month = stepped.getUTCMonth() + 1;
+      day = stepped.getUTCDate();
+      weekday = new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', weekday: 'short' }).format(
+        stepped,
+      );
+    } while (weekday === 'Sat' || weekday === 'Sun');
   }
 
-  return next;
+  // Convert the target wall-clock time in `timeZone` into an instant. One
+  // offset correction is enough outside the rare DST-transition hour.
+  const naive = Date.UTC(year, month - 1, day, startHour, 0, 0);
+  const offset = zoneOffsetMs(new Date(naive), timeZone);
+  return new Date(naive - offset);
 }
