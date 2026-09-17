@@ -27,7 +27,7 @@ import { getEmailService } from '@/lib/providers/email';
 import { getEnrichmentService } from '@/lib/providers/enrichment';
 import { notifyHandled, notifyStopped, notifyAutoFixed } from '@/lib/notifications';
 import { getBudgetStatus } from '@/lib/ai/budget';
-import { warmupDailyLimit } from '@/lib/sending/inbox-rotation';
+import { warmupDailyLimit, WARMUP_FULL_DAYS } from '@/lib/sending/inbox-rotation';
 import { syncSmartleadCampaign, refreshInboxCountersFromEmails } from '@/lib/smartlead/sync';
 import { generateWeeklyInsights } from '@/lib/insights/weekly';
 import { dripNewLeads } from '@/lib/sending/lead-drip';
@@ -129,7 +129,14 @@ export const healthCheckHandler: JobHandler = async (job) => {
         job.organizationId,
         `${component} is not responding`,
         `Health checks for "${component}" have failed repeatedly.\n\nLast error: ${result.error ?? 'unknown'}\n\nWork that depends on it is paused until it recovers.`,
-        { actionUrl: '/monitoring/health', actionLabel: 'Open system health' },
+        {
+          actionUrl: '/monitoring/health',
+          actionLabel: 'Open system health',
+          // The check runs every ten minutes; an outage should raise one alert a
+          // day, not 144. A nine-day Smartlead outage produced 1,598 of these.
+          dedupeKey: `health-down:${component}`,
+          dedupeWindowHours: 24,
+        },
       );
     }
   }
@@ -271,21 +278,32 @@ async function rampWarmupLimits(
 
   for (const inbox of inboxes) {
     const target = warmupDailyLimit(inbox.warmupStartedAt, inbox.maxDailySendLimit, false);
-    if (target <= inbox.dailySendLimit) continue;
+    const daysElapsed = Math.floor(
+      (Date.now() - inbox.warmupStartedAt!.getTime()) / (24 * 60 * 60 * 1000),
+    );
 
-    const completed = target >= inbox.maxDailySendLimit;
+    // Complete only once the full warm-up period has been served AND the ramp
+    // has reached the maximum. Reaching the maximum alone happens by week three.
+    const completed = target >= inbox.maxDailySendLimit && daysElapsed >= WARMUP_FULL_DAYS;
+
+    // Nothing to raise and not newly complete: leave it. (Checking completion
+    // before skipping matters — once the limit sits at the maximum, a skip-first
+    // check would never mark the inbox complete at all.)
+    if (target <= inbox.dailySendLimit && !completed) continue;
 
     await db
       .update(sendingInboxes)
       .set({
-        dailySendLimit: target,
+        dailySendLimit: Math.max(target, inbox.dailySendLimit),
         warmupCompleted: completed,
         status: completed ? 'active' : inbox.status,
         updatedAt: new Date(),
       })
       .where(eq(sendingInboxes.id, inbox.id));
 
-    changes.push({ email: inbox.emailAddress, from: inbox.dailySendLimit, to: target });
+    if (target > inbox.dailySendLimit) {
+      changes.push({ email: inbox.emailAddress, from: inbox.dailySendLimit, to: target });
+    }
   }
 
   // A domain becomes fully active once all of its inboxes finish warming.

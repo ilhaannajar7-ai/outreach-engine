@@ -3,6 +3,7 @@ import { db } from '@/db';
 import { emails, leads, contacts } from '@/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { getJobQueue } from '@/lib/providers/queue';
+import { isVerificationRequired, UNVERIFIED_MESSAGE } from '@/lib/sending/verification';
 import {
   requireWriteAccess,
   handleRoute,
@@ -56,6 +57,10 @@ export async function POST(request: Request, { params }: Params) {
         'That contact has unsubscribed or is suppressed. This draft cannot be sent.',
         'CONTACT_SUPPRESSED',
       );
+    }
+
+    if (!row.contact.emailVerified && (await isVerificationRequired(ctx.organizationId))) {
+      throw new ApiError(409, UNVERIFIED_MESSAGE, 'EMAIL_NOT_VERIFIED');
     }
 
     const edited =

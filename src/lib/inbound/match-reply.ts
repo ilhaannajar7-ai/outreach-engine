@@ -15,8 +15,8 @@
  */
 
 import { db } from '@/db';
-import { emails, contacts, leads, replies } from '@/db/schema';
-import { and, eq, desc, inArray, or } from 'drizzle-orm';
+import { emails, contacts, leads, replies, companies } from '@/db/schema';
+import { and, eq, desc, inArray, or, sql as dsql } from 'drizzle-orm';
 import type { NormalizedInboundEmail } from '@/lib/providers/email';
 import { notify } from '@/lib/notifications';
 
@@ -25,6 +25,39 @@ export interface MatchResult {
   replyId?: string;
   leadId?: string;
   reason: string;
+}
+
+/** Automated senders whose mail is never a human reply. */
+const SYSTEM_SENDER =
+  /^(mailer-daemon|postmaster|no-?reply|do-?not-?reply|bounce[s]?|notifications?|daemon)([+.@]|$)/i;
+
+function isSystemSender(address: string): boolean {
+  const local = address.split('@')[0] ?? '';
+  return SYSTEM_SENDER.test(local);
+}
+
+/** True when the sender's domain belongs to a company or contact on file. */
+async function isKnownProspectDomain(organizationId: string, address: string): Promise<boolean> {
+  const domain = address.split('@')[1]?.toLowerCase().trim();
+  if (!domain) return false;
+
+  const [hit] = await db
+    .select({ id: contacts.id })
+    .from(contacts)
+    .innerJoin(leads, eq(leads.contactId, contacts.id))
+    .innerJoin(companies, eq(leads.companyId, companies.id))
+    .where(
+      and(
+        eq(contacts.organizationId, organizationId),
+        or(
+          dsql`lower(split_part(${contacts.email}, '@', 2)) = ${domain}`,
+          dsql`lower(${companies.domain}) = ${domain}`,
+        ),
+      ),
+    )
+    .limit(1);
+
+  return Boolean(hit);
 }
 
 export async function ingestInboundReply(
@@ -80,16 +113,35 @@ export async function ingestInboundReply(
     matchedEmail = row?.email;
   }
 
-  // --- Unmatched: store it, flag it, do not guess -----------------------
+  // --- Unmatched: surface only what could plausibly be a prospect -------
   if (!matchedEmail) {
+    // The polled mailbox also receives bounce notices, Smartlead warm-up
+    // traffic, and ordinary mail. None of that is a reply, and treating it as
+    // one buried every real alert under thousands of repeats: the poller
+    // re-reads a lookback window every ten minutes, so each such message was
+    // re-announced on every pass.
+    if (isSystemSender(inbound.fromAddress)) {
+      return { matched: false, reason: 'System/bounce sender — not a reply' };
+    }
+
+    // A real prospect replying without threading headers almost always writes
+    // from their company's domain. A sender from a domain we have never
+    // contacted is not a reply to our outreach.
+    if (!(await isKnownProspectDomain(organizationId, inbound.fromAddress))) {
+      return { matched: false, reason: 'Sender domain is not a contacted prospect' };
+    }
+
     await notify({
       organizationId,
       tier: 'tier_2_auto_notified',
       title: `Unmatched reply from ${inbound.fromAddress}`,
       message:
-        `A reply came in that could not be matched to any outreach we sent:\n\n` +
+        `A reply came in from a prospect's domain but could not be matched to a specific email:\n\n` +
         `Subject: ${inbound.subject}\n\n${inbound.text.slice(0, 400)}`,
       metadata: { fromAddress: inbound.fromAddress, subject: inbound.subject },
+      // Announce each message once, however many times the poller re-reads it.
+      dedupeKey: `unmatched:${inbound.providerMessageId ?? `${inbound.fromAddress}:${inbound.subject}`}`,
+      dedupeWindowHours: 24 * 30,
     });
 
     return { matched: false, reason: 'No sent email matched the reply' };

@@ -4,6 +4,7 @@ import { emails, leads, contacts } from '@/db/schema';
 import { and, eq, inArray } from 'drizzle-orm';
 import { getJobQueue } from '@/lib/providers/queue';
 import { getRemainingCapacityToday } from '@/lib/sending/inbox-rotation';
+import { isVerificationRequired } from '@/lib/sending/verification';
 import { requireWriteAccess, handleRoute, parseBody, audit } from '@/lib/api-helpers';
 
 const bodySchema = z.object({
@@ -33,8 +34,16 @@ export async function POST(request: Request) {
 
     const approved: string[] = [];
     const skipped: { id: string; reason: string }[] = [];
+    const verificationRequired = await isVerificationRequired(ctx.organizationId);
 
     for (const { email, contact } of rows) {
+      // Left in the queue rather than rejected: once verification completes it
+      // can be approved normally.
+      if (verificationRequired && !contact.emailVerified) {
+        skipped.push({ id: email.id, reason: 'Address not verified yet' });
+        continue;
+      }
+
       if (email.status !== 'pending_approval' && email.status !== 'draft') {
         skipped.push({ id: email.id, reason: `Status is "${email.status}"` });
         continue;

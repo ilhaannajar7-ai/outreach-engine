@@ -52,6 +52,14 @@ export class NoCapacityError extends Error {
  */
 const WARMUP_SCHEDULE = [10, 20, 35, 50, 65, 80, 95, 110] as const;
 
+/**
+ * Warm-up is complete when it has been served for this long — not when the
+ * daily limit first touches the inbox maximum. With a 50/day maximum the ramp
+ * reaches it in week three, and treating that as "done" declared inboxes fully
+ * warmed at day 21 while reputation was still being built.
+ */
+export const WARMUP_FULL_DAYS = 42;
+
 export function warmupDailyLimit(
   warmupStartedAt: Date | null,
   maxLimit: number,

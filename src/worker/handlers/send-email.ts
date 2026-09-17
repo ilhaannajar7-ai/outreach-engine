@@ -19,6 +19,7 @@ import {
 } from '@/lib/sending/inbox-rotation';
 import { notifyHandled, notifyStopped } from '@/lib/notifications';
 import { env } from '@/lib/env';
+import { isVerificationRequired } from '@/lib/sending/verification';
 import type { JobHandler } from '../types';
 
 export const sendEmailHandler: JobHandler<{ emailId: string; force?: boolean }> = async (job) => {
@@ -65,6 +66,35 @@ export const sendEmailHandler: JobHandler<{ emailId: string; force?: boolean }> 
     return { skipped: true, reason: 'Contact is unsubscribed or suppressed' };
   }
 
+  // Approved before verification was required, or before it finished: hand it
+  // back for review instead of sending to an address nobody has checked.
+  if (!contact.emailVerified && (await isVerificationRequired(organizationId))) {
+    await db
+      .update(emails)
+      .set({
+        status: 'pending_approval',
+        approvedBy: null,
+        approvedAt: null,
+        failureReason: 'Held: address not verified',
+        updatedAt: new Date(),
+      })
+      .where(eq(emails.id, emailId));
+
+    await notifyHandled(
+      organizationId,
+      'Emails held: addresses not verified',
+      'One or more approved emails were returned to the approval queue because their address ' +
+        'has not been verified. They can be approved again once verification completes.',
+      {
+        actionUrl: '/queue',
+        actionLabel: 'Open approval queue',
+        dedupeKey: `unverified-held:${new Date().toISOString().slice(0, 10)}`,
+      },
+    );
+
+    return { skipped: true, reason: 'Address not verified' };
+  }
+
   if (lead.repliedAt && email.kind !== 'initial') {
     await db
       .update(emails)
@@ -100,6 +130,8 @@ export const sendEmailHandler: JobHandler<{ emailId: string; force?: boolean }> 
       await notifyHandled(organizationId, 'Daily send limit reached', error.message, {
         actionUrl: '/sending/limits',
         actionLabel: 'Review sending limits',
+        // Once per day, not once per email that hit the cap.
+        dedupeKey: `capacity-reached:${new Date().toISOString().slice(0, 10)}`,
       });
 
       return { deferred: true, reason: error.message, retryAt: tomorrow.toISOString() };

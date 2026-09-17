@@ -26,6 +26,16 @@ export interface NotifyParams {
   relatedEntityType?: string;
   relatedEntityId?: string;
   metadata?: Record<string, unknown>;
+  /**
+   * Collapse repeats. When set, a notification with the same key created inside
+   * `dedupeWindowHours` suppresses this one. Anything raised from a recurring
+   * job needs this: without it a condition that persists for a day produces an
+   * alert every ten minutes, and a feed of thousands of identical rows hides
+   * the one alert that matters.
+   */
+  dedupeKey?: string;
+  /** Defaults to 24 hours. */
+  dedupeWindowHours?: number;
 }
 
 const TIER_CHANNEL: Record<NotificationTier, 'dashboard' | 'email' | 'both'> = {
@@ -37,6 +47,23 @@ const TIER_CHANNEL: Record<NotificationTier, 'dashboard' | 'email' | 'both'> = {
 
 export async function notify(params: NotifyParams): Promise<string> {
   const channel = TIER_CHANNEL[params.tier];
+
+  if (params.dedupeKey) {
+    const windowHours = params.dedupeWindowHours ?? 24;
+    const [existing] = await db
+      .select({ id: notifications.id })
+      .from(notifications)
+      .where(
+        and(
+          eq(notifications.organizationId, params.organizationId),
+          dsql`${notifications.metadata}->>'dedupeKey' = ${params.dedupeKey}`,
+          dsql`${notifications.createdAt} > NOW() - (${windowHours} * INTERVAL '1 hour')`,
+        ),
+      )
+      .limit(1);
+
+    if (existing) return existing.id;
+  }
 
   const [row] = await db
     .insert(notifications)
@@ -50,7 +77,9 @@ export async function notify(params: NotifyParams): Promise<string> {
       actionLabel: params.actionLabel ?? null,
       relatedEntityType: params.relatedEntityType ?? null,
       relatedEntityId: params.relatedEntityId ?? null,
-      metadata: params.metadata ?? null,
+      metadata: params.dedupeKey
+        ? { ...(params.metadata ?? {}), dedupeKey: params.dedupeKey }
+        : (params.metadata ?? null),
     })
     .returning({ id: notifications.id });
 
@@ -121,7 +150,13 @@ export function notifyHandled(
   organizationId: string,
   title: string,
   message: string,
-  options?: { actionUrl?: string; actionLabel?: string; metadata?: Record<string, unknown> },
+  options?: {
+    actionUrl?: string;
+    actionLabel?: string;
+    metadata?: Record<string, unknown>;
+    dedupeKey?: string;
+    dedupeWindowHours?: number;
+  },
 ): Promise<string> {
   return notify({
     organizationId,
@@ -131,6 +166,8 @@ export function notifyHandled(
     ...(options?.actionUrl ? { actionUrl: options.actionUrl } : {}),
     ...(options?.actionLabel ? { actionLabel: options.actionLabel } : {}),
     ...(options?.metadata ? { metadata: options.metadata } : {}),
+    ...(options?.dedupeKey ? { dedupeKey: options.dedupeKey } : {}),
+    ...(options?.dedupeWindowHours ? { dedupeWindowHours: options.dedupeWindowHours } : {}),
   });
 }
 
@@ -139,7 +176,13 @@ export function notifyStopped(
   organizationId: string,
   title: string,
   message: string,
-  options?: { actionUrl?: string; actionLabel?: string; metadata?: Record<string, unknown> },
+  options?: {
+    actionUrl?: string;
+    actionLabel?: string;
+    metadata?: Record<string, unknown>;
+    dedupeKey?: string;
+    dedupeWindowHours?: number;
+  },
 ): Promise<string> {
   return notify({
     organizationId,
@@ -149,6 +192,8 @@ export function notifyStopped(
     ...(options?.actionUrl ? { actionUrl: options.actionUrl } : {}),
     ...(options?.actionLabel ? { actionLabel: options.actionLabel } : {}),
     ...(options?.metadata ? { metadata: options.metadata } : {}),
+    ...(options?.dedupeKey ? { dedupeKey: options.dedupeKey } : {}),
+    ...(options?.dedupeWindowHours ? { dedupeWindowHours: options.dedupeWindowHours } : {}),
   });
 }
 
